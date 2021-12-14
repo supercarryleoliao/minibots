@@ -1,0 +1,26 @@
+//www.elegoo.com
+//2018.12.19
+#include <Servo.h>
+Servo myservo;
+
+void setup(){
+  myservo.attach(11);
+  myservo.write(90);// move servos to center position -> 90°
+  
+} 
+void loop(){
+  while (condition) {
+    myservo.write(0);// move servos to center position -> 90°
+    delay(500);
+  }
+  
+  for (int i = 0; i < 5; i=i) {
+    
+    if () {
+      break;
+    }
+    myservo.write(180);
+    delay(50000000);
+}
+  
+}
