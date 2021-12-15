@@ -1,0 +1,34 @@
+// RGB sensor
+#include <Wire.h>
+#include <Adafruit_TCS34725.h>
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
+uint16_t r, g, b, c, colorTemp, lux;
+
+
+// Servo
+#include <Servo.h>
+Servo myservo;
+#define SERVO_PIN 11
+#define SERVO_OPEN_POS 65
+#define SERVO_CLOSE_POS 115
+void setup() {
+  Serial.begin(115200);
+  
+  // RGB
+  if (tcs.begin()) {
+    Serial.println("Found sensor");
+  } else {
+    Serial.println("No TCS34725 found ... check your connections");
+    while (1);
+  }
+
+void detectCube(){
+  tcs.getRawData(&r, &g, &b, &c);
+  colorTemp = tcs.calculateColorTemperature_dn40(r, g, b, c);     
+  if(r > 2*g && r > 2*b){
+    hasCube = true; 
+    brake(motor1,motor2);
+    myservo.write(SERVO_CLOSE_POS);
+    delay(500);
+  }
+}
