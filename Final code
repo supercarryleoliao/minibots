@@ -1,0 +1,246 @@
+// motor
+#include <SparkFun_TB6612.h>
+#define AIN1 2
+#define BIN1 7
+#define AIN2 4
+#define BIN2 8
+#define PWMA 5
+#define PWMB 6
+#define STBY 9
+const int offsetA = 1;
+const int offsetB = -1;
+Motor motor1 = Motor(AIN1, AIN2, PWMA, offsetA, STBY);  // right
+Motor motor2 = Motor(BIN1, BIN2, PWMB, offsetB, STBY);  // left
+
+
+// RGB sensor
+#include <Wire.h>
+#include <Adafruit_TCS34725.h>
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
+uint16_t r, g, b, c, colorTemp, lux;
+
+
+// Servo
+#include <Servo.h>
+Servo myservo;
+#define SERVO_PIN 11
+#define SERVO_OPEN_POS 65
+#define SERVO_CLOSE_POS 115
+
+// lineFollowing
+#define LEFT_SENSOR_PIN A2
+#define RIGHT_SENSOR_PIN A1
+const int threshold = 500;
+
+
+
+// ultrasonic
+#include <HCSR04.h>
+#define TRIG 12
+#define ECHO 13
+HCSR04 hc(TRIG,ECHO);//initialisation class HCSR04 (trig pin , echo pin)
+
+//MPU
+const int MPU = 0x68; // MPU6050 I2C address
+float AccX, AccY, AccZ;
+float GyroX, GyroY, GyroZ;
+float accAngleX, accAngleY, gyroAngleX, gyroAngleY, gyroAngleZ;
+float roll, pitch, yaw;
+float AccErrorX, AccErrorY, GyroErrorX, GyroErrorY, GyroErrorZ;
+float elapsedTime, currentTime, previousTime;
+
+bool hasCube = false; 
+void setup() {
+  Serial.begin(115200);
+  
+  // RGB
+  if (tcs.begin()) {
+    Serial.println("Found sensor");
+  } else {
+    Serial.println("No TCS34725 found ... check your connections");
+    while (1);
+  }
+
+  // pins
+  // lineFollowing
+  pinMode(LEFT_SENSOR_PIN, INPUT);
+  pinMode(RIGHT_SENSOR_PIN, INPUT);
+  // motor
+  pinMode(AIN1, OUTPUT);
+  pinMode(BIN1, OUTPUT);
+  pinMode(AIN2, OUTPUT);
+  pinMode(BIN1, OUTPUT);
+  pinMode(PWMA, OUTPUT);
+  pinMode(PWMB, OUTPUT);
+  pinMode(STBY, OUTPUT);
+  // servo
+  pinMode(SERVO_PIN, OUTPUT);
+  // ultrasonic
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT); 
+  
+  // Servo
+  myservo.attach(SERVO_PIN);
+  myservo.write(SERVO_OPEN_POS);
+  delay(1000); 
+  
+}
+void loop() {
+  followLine();
+  detectCube();
+//  seeOtherBot();
+
+}
+void followLine(){
+  int left_sensor_state = analogRead(LEFT_SENSOR_PIN);
+  int right_sensor_state = analogRead(RIGHT_SENSOR_PIN);
+  Serial.print("left sensor: ");
+  Serial.print(left_sensor_state);
+  Serial.print(", right sensor: ");
+  Serial.println(right_sensor_state);
+
+  if(right_sensor_state < threshold && left_sensor_state > threshold)
+  {
+  Serial.println("turning right");
+  brake(motor1,motor2);
+  left(motor1, motor2, 225);
+  delay(200);
+  brake(motor1, motor2);
+  }  
+  else if(right_sensor_state > threshold && left_sensor_state < threshold)
+  {
+  Serial.println("turning left");
+  brake(motor1,motor2);
+  right(motor1, motor2, 225);
+  delay(200);
+  brake(motor1, motor2);
+  } 
+  else if(right_sensor_state > threshold && left_sensor_state > threshold)
+  {
+  Serial.println("going straight");
+  forward(motor1, motor2, 150);
+  delay(100);
+  brake(motor1, motor2);
+  }
+  else if(right_sensor_state < threshold && left_sensor_state < threshold && hasCube == false)
+  {
+  turn180(); 
+  forward(motor1, motor2, 150);
+  delay(200);
+  brake(motor1, motor2);
+  }
+}
+
+void detectCube(){
+  tcs.getRawData(&r, &g, &b, &c);
+  colorTemp = tcs.calculateColorTemperature_dn40(r, g, b, c);     
+  if(r > 2*g && r > 2*b){
+    hasCube = true; 
+    brake(motor1,motor2);
+    myservo.write(SERVO_CLOSE_POS);
+    delay(500);
+    Serial.println("grabbed");
+    Serial.println("turning");
+    turn180();
+    putCube();
+  }
+}
+
+void putCube(){
+  while(true){
+    followLine();
+    delay(50);
+    int left_sensor_state = analogRead(LEFT_SENSOR_PIN);
+    int right_sensor_state = analogRead(RIGHT_SENSOR_PIN); 
+    if (right_sensor_state < threshold && left_sensor_state < threshold){
+      break; 
+    }
+  }
+  Serial.println("back home!");
+  forward(motor1, motor2, 100);
+  delay(1000);
+  myservo.write(SERVO_OPEN_POS);
+  Serial.println("put the cube down");
+  back(motor1, motor2, 100);
+  delay(1000);
+  turn180();
+  delay(200);
+  forward(motor1, motor2, 100);
+  delay(500);
+  Serial.println("next cube!");
+  hasCube = false; 
+  brake(motor1, motor2);
+}
+
+// check if we're too close
+void seeOtherBot(){
+  int distance = hc.dist();
+//  Serial.print("Distance of other car: ");
+//  Serial.println(distance);
+  while (distance < 5) {
+    distance = hc.dist();
+    brake(motor1, motor2);
+  }
+}
+
+
+
+void mpu(){
+// === Read acceleromter data === //
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B); // Start with register 0x3B (ACCEL_XOUT_H)
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 6, true); // Read 6 registers total, each axis value is stored in 2 registers
+  //For a range of +-2g, we need to divide the raw values by 16384, according to the datasheet
+  AccX = (Wire.read() << 8 | Wire.read()) / 16384.0; // X-axis value
+  AccY = (Wire.read() << 8 | Wire.read()) / 16384.0; // Y-axis value
+  AccZ = (Wire.read() << 8 | Wire.read()) / 16384.0; // Z-axis value
+  // Calculating Roll and Pitch from the accelerometer data
+  accAngleX = (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / PI) - 1.04; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+  accAngleY = (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / PI) - 2.98; // AccErrorY ~(-1.58)
+
+  // === Read gyroscope data === //
+  previousTime = currentTime;        // Previous time is stored before the actual time read
+  currentTime = millis();            // Current time actual time read
+  elapsedTime = (currentTime - previousTime) / 1000; // Divide by 1000 to get seconds
+  Wire.beginTransmission(MPU);
+  Wire.write(0x43); // Gyro data first register address 0x43
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 6, true); // Read 4 registers total, each axis value is stored in 2 registers
+  GyroX = (Wire.read() << 8 | Wire.read()) / 131.0; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
+  GyroY = (Wire.read() << 8 | Wire.read()) / 131.0;
+  GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
+  // Correct the outputs with the calculated error values
+  GyroX = GyroX - 0.41; // GyroErrorX ~(-0.56)
+  GyroY = GyroY + 0.77; // GyroErrorY ~(2)
+  GyroZ = GyroZ - 1.29; // GyroErrorZ ~ (-0.8)
+
+  // Currently the raw values are in degrees per seconds, deg/s, so we need to multiply by sendonds (s) to get the angle in degrees
+  gyroAngleX = gyroAngleX + GyroX * elapsedTime; // deg/s * s = deg
+  gyroAngleY = gyroAngleY + GyroY * elapsedTime;
+  yaw =  yaw + GyroZ * elapsedTime;
+
+  // Complementary filter - combine acceleromter and gyro angle values
+  roll = 0.96 * gyroAngleX + 0.04 * accAngleX;
+  pitch = 0.96 * gyroAngleY + 0.04 * accAngleY;
+  
+  // Print the values on the serial monitor
+  Serial.print(roll);
+  Serial.print("/");
+  Serial.print(pitch);
+  Serial.print("/");
+  Serial.println(yaw);
+}
+
+void turn180(){
+  mpu();
+  right(motor1, motor2, 255);
+  float yaw0 = yaw;
+  while (true){
+    while (yaw < yaw0+170){
+      mpu();
+    }
+    brake(motor1,motor2);
+    break;
+  }
+}
