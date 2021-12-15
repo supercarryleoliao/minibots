@@ -3,3 +3,4 @@ CuR minibots is an annual fresher's project to introduce newcomers the Robotics 
 I developped the code for gripping blocks and came up with the code for line following code together with my teammates.<br/> 
 Below are the videos. Our robot car is capable of doing mutiple functions including followinging the line. However, it moved very slowly which might because of the need of excuting multiple functions.
 https://user-images.githubusercontent.com/69503146/146181066-725e740f-668c-4ab6-8671-41d57d6ac982.mp4
+
